@@ -9,7 +9,8 @@ module.exports = async function handler(req, res) {
   }
 
   // ── 2. Läs och parsa body säkert ──────────────────────────────────────
-  let first = '';
+  let slug   = '';
+  let first  = '';
   let second = '';
   let source = '';
 
@@ -19,6 +20,7 @@ module.exports = async function handler(req, res) {
         ? JSON.parse(req.body || '{}')
         : req.body || {};
 
+    slug   = body.slug   ?? '';
     first  = body.first  ?? '';
     second = body.second ?? '';
     source = body.source ?? '';
@@ -28,11 +30,11 @@ module.exports = async function handler(req, res) {
   }
 
   // ── 3. Bygg prompten ──────────────────────────────────────────────────
-  const safeSource = source.slice(0, 9000); // trunkera om texten är jättelång
+  const safeSource = source.slice(0, 9000); // trunkera vid 9 000 tecken
 
   const prompt = `
 Du är en strikt gransknings-assistent. Du får endast använda KÄLLTEXTEN nedan
-som referens.
+som facit.
 
 ────────────────────────────────────
 KÄLLTEXT:
@@ -51,7 +53,7 @@ Din uppgift:
 2. Punktvis: vad saknas eller misstolkas fortfarande i SVAR 2 enligt källtexten.
 3. Två konkreta råd för hur SVAR 2 kan bli helt korrekt.
 
-Svara på svenska och gärna som punktlista för tydlighet.
+Svara på svenska och använd punktlistor för tydlighet.
 `;
 
   // ── 4. Anropa OpenAI ──────────────────────────────────────────────────
