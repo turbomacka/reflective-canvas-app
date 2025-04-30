@@ -2,73 +2,59 @@ const OpenAI = require('openai');
 
 /** @type {(req, res) => Promise<void>} */
 module.exports = async function handler(req, res) {
-  // ── 1. Tillåt bara POST ───────────────────────────────────────────────
-  if (req.method !== 'POST') {
-    res.status(405).send('Method not allowed');
-    return;
-  }
+  if (req.method !== 'POST') return res.status(405).send('Method not allowed');
 
-  // ── 2. Läs och parsa body säkert ──────────────────────────────────────
-  let slug   = '';
-  let first  = '';
-  let second = '';
-  let source = '';
+  let { slug = '', first = '', second = '', source = '' } =
+    typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
 
-  try {
-    const body =
-      typeof req.body === 'string'
-        ? JSON.parse(req.body || '{}')
-        : req.body || {};
+  const safeSource = source.slice(0, 9000);
 
-    slug   = body.slug   ?? '';
-    first  = body.first  ?? '';
-    second = body.second ?? '';
-    source = body.source ?? '';
-  } catch {
-    res.status(400).send('Invalid JSON payload');
-    return;
-  }
+  // ── A. Om second är tomt: bara snabb­bedöm Svar 1 ─────────────────────
+  const prompt =
+    second.trim() === ''
+      ? `
+Du är en gransknings-assistent. Bedöm om STUDENTSVAR är
+*helt korrekt* (alla relevanta aspekter från källtexten finns med)
+eller *ofullständigt/fel*.
 
-  // ── 3. Bygg prompten ──────────────────────────────────────────────────
-  const safeSource = source.slice(0, 9000); // trunkera vid 9 000 tecken
-
-  const prompt = `
-Du är en strikt gransknings-assistent. Du får endast använda KÄLLTEXTEN nedan
-som facit.
-
-────────────────────────────────────
 KÄLLTEXT:
 """${safeSource}"""
-────────────────────────────────────
 
-Studentens första svar:
+STUDENTSVAR:
 """${first}"""
 
-Studentens andra svar:
+Svara exakt en rad JSON:
+{ "perfect": true/false, "fb": "kort feedback på svenska" }
+`
+      : `
+Du är en gransknings-assistent. Du får endast använda källtexten nedan.
+
+KÄLLTEXT:
+"""${safeSource}"""
+
+SVAR 1:
+"""${first}"""
+
+SVAR 2:
 """${second}"""
 
-Din uppgift:
+1. Punktvis: förbättringar i SVAR 2 jämfört med SVAR 1 (hänvisa till källtext).
+2. Punktvis: kvarvarande fel/utelämnanden i SVAR 2.
+3. Två konkreta råd för att göra SVAR 2 helt korrekt.
 
-1. Punktvis: vad har förbättrats i SVAR 2 jämfört med SVAR 1 – hänvisa till källtexten.
-2. Punktvis: vad saknas eller misstolkas fortfarande i SVAR 2 enligt källtexten.
-3. Två konkreta råd för hur SVAR 2 kan bli helt korrekt.
-
-Svara på svenska och använd punktlistor för tydlighet.
+Svara på svenska och använd punktlistor.
 `;
 
-  // ── 4. Anropa OpenAI ──────────────────────────────────────────────────
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const completion = await openai.chat.completions.create({
+    const out = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo-0125',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7
     });
-
-    res.status(200).send(completion.choices[0].message.content);
-  } catch (err) {
-    console.error('GPT-fel:', err);
+    res.status(200).send(out.choices[0].message.content.trim());
+  } catch (e) {
+    console.error(e);
     res.status(500).send('LLM-error');
   }
 };
