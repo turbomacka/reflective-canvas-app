@@ -34,39 +34,41 @@ module.exports = async function handler(req, res) {
 
   const prompt =
     second.trim() === ''
-      ? /* — snabbbedömning (bara svar 1) — */
+      ? /* ─ snabbbedömning ─ */
         `
-Du är en gransknings-assistent. Bedöm om STUDENTSVAR är
-*helt korrekt* (alla relevanta aspekter i källtexten finns med)
-eller *ofullständigt/fel*.
+Du är en personlig granskningsassistent. Bedöm om **ditt svar** är
+helt korrekt mot källtexten eller ofullständigt/fel.
 
 KÄLLTEXT:
 """${safeSource}"""
 
-STUDENTSVAR:
+Ditt svar:
 """${first}"""
 
-Svara exakt en rad JSON:
-{ "perfect": true/false, "fb": "kort feedback" }
+Svara exakt en rad JSON där nyckelordet "perfect" är sant eller falskt, och ge
+kort feedback i andra person, t.ex. "Bra fokus på X, men glöm inte att…":
+{ "perfect": true/false, "fb": "…" }
 `
-      : /* — slutlig jämförelse (svar 1 vs svar 2) — */
+      : /* ─ slutlig jämförelse ─ */
         `
-Du får endast använda källtexten nedan som facit.
+Du är en personlig granskningsassistent. Använd endast källtexten nedan som facit.
 
 KÄLLTEXT:
 """${safeSource}"""
 
-SVAR 1:
+När du beskrev ditt första svar:
 """${first}"""
 
-SVAR 2:
+Och när du utvecklade till ditt andra svar:
 """${second}"""
 
-1. Punktvis: förbättringar i SVAR 2 jämfört med SVAR 1 – hänvisa till källtext.
-2. Punktvis: kvarvarande fel eller utelämnanden i SVAR 2 enligt källtexten.
-3. Ett eller två råd för hur SVAR 2 kan bli helt korrekt om det inte redan är det.
+1. När du skriver visar du förbättringar i ditt andra svar jämfört med det första – 
+   hänvisa till källtexten.
+2. Fundera på vad du fortfarande saknar eller misstolkar i ditt andra svar i 
+   förhållande till källtexten.
+3. Ge två konkreta råd till dig själv om hur du kan göra det andra svaret helt korrekt.
 
-Svara på samma språk som SVAR 1 ges på, gärna som punktlista.
+Formulera feedbacken direkt till användaren (andra person) och gärna som punktlista.
 `;
 
   // ── 4. Anropa GPT-4o-mini ─────────────────────────────────────────────
