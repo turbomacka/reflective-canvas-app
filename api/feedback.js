@@ -26,15 +26,32 @@ module.exports = async function handler(req, res) {
   }
 
   // -- 3. Bygg prompten ----------------------------------------------------
-  const prompt = `
-Du är en hjälpsam handledare. Jämför följande två svar och ge konkret feedback på förändringar i förståelse.
+  const safeSource = source.slice(0, 9000);    // trunkera om texten är jättelång
 
-Första svar:
+const prompt = `
+Du är en strikt gransknings-assistent. Du får endast använda KÄLLTEXTEN nedan
+som referens.
+
+────────────────────────────────────
+KÄLLTEXT:
+"""${safeSource}"""
+────────────────────────────────────
+
+Studentens första svar:
 """${first}"""
 
-Andra svar:
+Studentens andra svar:
 """${second}"""
+
+Din uppgift:
+
+1. Ange punktvis vad SVAR 2 har förbättrat jämfört med SVAR 1 – hänvisa till källtexten.
+2. Lista fel eller saknade aspekter som fortfarande finns i SVAR 2, sett till källtexten.
+3. Ge två konkreta råd på hur SVAR 2 kan bli helt korrekt.
+
+Svar på svenska och gärna punktlistor för tydlighet.
 `;
+
 
   // -- 4. Anropa OpenAI ----------------------------------------------------
   try {
