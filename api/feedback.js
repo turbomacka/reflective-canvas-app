@@ -1,36 +1,54 @@
 const OpenAI = require('openai');
 
 /** @type {(req, res) => Promise<void>} */
-module.exports = async function (req, res) {
+module.exports = async function handler(req, res) {
+  // -- 1. Tillåt bara POST -----------------------------------------------
   if (req.method !== 'POST') {
     res.status(405).send('Method not allowed');
     return;
   }
 
-  const { first, second } = req.body;
+  // -- 2. Läs och parsa body säkert ---------------------------------------
+  let first = '';
+  let second = '';
 
-  const prompt = `Du är en hjälpsam handledare. Jämför följande två svar och ge konkret feedback på förändringar i förståelse.
+  try {
+    const body =
+      typeof req.body === 'string'
+        ? JSON.parse(req.body || '{}')
+        : req.body || {};
 
-Första svar: """${first}"""
+    first = body.first ?? '';
+    second = body.second ?? '';
+  } catch {
+    res.status(400).send('Invalid JSON payload');
+    return;
+  }
 
-Andra svar: """${second}""" `;
+  // -- 3. Bygg prompten ----------------------------------------------------
+  const prompt = `
+Du är en hjälpsam handledare. Jämför följande två svar och ge konkret feedback på förändringar i förståelse.
 
- const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+Första svar:
+"""${first}"""
 
- const completion = await openai.chat.completions.create({
-   model: 'gpt-3.5-turbo-0125',   // garanterat tillgänglig
-   messages: [{ role: 'user', content: prompt }],
-   temperature: 0.7,
- });
+Andra svar:
+"""${second}"""
+`;
 
- res.status(200).send(completion.choices[0].message.content);
+  // -- 4. Anropa OpenAI ----------------------------------------------------
+  try {
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo-0125', // alltid tillgänglig
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+    });
+
+    res.status(200).send(completion.choices[0].message.content);
+  } catch (err) {
+    console.error('GPT-fel:', err);
+    res.status(500).send('LLM-error');
+  }
 };
-
-
-*(Vi byter till `gpt-3.5-turbo-0125` så du slipper modell-åtkomstproblem om 4-serien inte är upplåst.)*
-
-2. **Ta bort** den gamla TypeScript-filen (eller döp om den så den inte byggs):
-
-```powershell
-del api\feedback.ts
