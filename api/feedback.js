@@ -1,97 +1,88 @@
-const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 
-/**
- * API Route: /api/feedback
- * Handles POST requests with JSON: { slug, first, second, source }
- * Calls OpenAI for feedback and logs interaction in Supabase.
- */
+// Initiera Supabase
+const supabase = createClient(
+  process.env.VITE_SUPA_URL.replace(/^https:\/\//, 'https://'),
+  process.env.VITE_SUPA_KEY
+);
+
+/** @type {(req, res) => Promise<void>} */
 module.exports = async function handler(req, res) {
-  // 1. Only allow POST
   if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed');
+    res.status(405).send('Method not allowed');
     return;
   }
 
-  // 2. Parse request body
-  let slug = '', first = '', second = '', source = '';
+  // Läs och parsa body
+  let first = '', second = '', source = '', slug = '', delta_seconds = null;
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    slug   = body.slug   ?? '';
-    first  = body.first  ?? '';
-    second = body.second ?? '';
-    source = body.source ?? '';
-  } catch (err) {
-    console.error('Failed to parse JSON:', err);
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
+    first         = body.first ?? '';
+    second        = body.second ?? '';
+    source        = body.source ?? '';
+    slug          = body.slug ?? '';
+    delta_seconds = body.delta_seconds ?? null;
+  } catch {
     res.status(400).send('Invalid JSON payload');
     return;
   }
 
-  // 3. Prepare prompt (truncate source if very long)
-  const safeSource = source.length > 9000 ? source.slice(0, 9000) : source;
+  // Bygg prompt
+  const safeSource = source.slice(0, 9000);
+  const prompt = `
+Du är en strikt gransknings-assistent. Du får endast använda KÄLLTEXTEN nedan
+som referens.
 
-  const prompt = second.trim() === ''
-    ? /* quick assessment prompt */
-      `Du är en personlig granskningsassistent. Bedöm om ditt svar är helt korrekt mot källtexten nedan eller ofullständigt/fel.
-
+────────────────────────────────────
 KÄLLTEXT:
 """${safeSource}"""
+────────────────────────────────────
 
-Ditt svar:
+Studentens första svar:
 """${first}"""
 
-Returnera endast JSON utan kodblock eller markdown, t.ex. {"perfect": true, "fb": "Kort feedback utan markdown"}`
-    : /* full feedback prompt */
-      `Du är en personlig granskningsassistent. Använd endast källtexten nedan som facit.
-
-KÄLLTEXT:
-"""${safeSource}"""
-
-När du beskrev ditt första svar:
-"""${first}"""
-
-När du utvecklade till ditt andra svar:
+Studentens andra svar:
 """${second}"""
 
-1. Punktvis: förbättringar i ditt andra svar jämfört med det första – hänvisa till källtexten.
-2. Punktvis: saknade aspekter eller feltolkningar i ditt andra svar enligt källtexten.
-3. Ge två konkreta råd för hur du kan göra det andra svaret helt korrekt.
+Tidsåtgång mellan svar: ${delta_seconds ?? 'okänt'} sekunder
 
-Svara på svenska, använd punktlistor utan markdown eller kodblock.`;
+Din uppgift:
+1. Punktvis: vad har förbättrats i SVAR 2 jämfört med SVAR 1 – hänvisa till källtexten.
+2. Punktvis: vad saknas eller misstolkas fortfarande i SVAR 2 enligt källtexten.
+3. Två konkreta råd för hur SVAR 2 kan bli helt korrekt.
 
-  // 4. Call OpenAI
-  let feedback = '';
+Svara på svenska och gärna som punktlista för tydlighet.
+`;
+
+  // GPT-anrop
+  let aiFeedback;
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const resp = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+    const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo-0613',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7
+      temperature: 0.7,
     });
-    feedback = resp.choices[0].message.content.trim();
+    aiFeedback = completion.choices[0].message.content;
   } catch (err) {
-    console.error('OpenAI error:', err);
+    console.error('GPT-fel:', err);
     res.status(500).send('LLM-error');
     return;
   }
 
-  // 5. Log interaction to Supabase
-  try {
-    const supabase = createClient(
-      process.env.VITE_SUPA_URL,
-      process.env.VITE_SUPA_KEY
-    );
-    await supabase.from('conversation_logs').insert({
+  // Spara logg i Supabase
+  const { error } = await supabase
+    .from('conversation_logs')
+    .insert([{
       slug,
       first,
       second,
-      feedback
-    });
-  } catch (err) {
-    console.error('Supabase log error:', err);
-    // continue without blocking response
-  }
+      feedback: aiFeedback,
+      delta_seconds,
+    }]);
+  if (error) console.error('Supabase-log error:', error);
 
-  // 6. Send feedback
-  res.status(200).send(feedback);
+  // Svara klient
+  res.status(200).json({ feedback: aiFeedback });
 };
