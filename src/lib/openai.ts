@@ -1,9 +1,23 @@
-export async function getFeedback(first: string, second: string): Promise<string> {
+// src/lib/openai.ts
+export interface FeedbackResponse {
+  feedback: string;
+}
+
+export async function getFeedback(params: {
+  slug: string;
+  first: string;
+  second: string;
+  source: string;
+  delta_seconds: number | null;
+}): Promise<FeedbackResponse> {
   const res = await fetch('/api/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ first, second }),
+    body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error('LLM-error');
-  return res.text();
+  if (!res.ok) {
+    throw new Error(`Feedback API error: ${res.status}`);
+  }
+  return res.json();
 }
+
