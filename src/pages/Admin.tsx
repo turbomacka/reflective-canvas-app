@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { supa } from '../lib/supa';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { CircleSpinner } from '@/components/ui/spinner';
+import { Eye, Download, Trash2, Sparkle, Save, PlusCircle } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface PageRow {
   slug: string;
   title: string | null;
-  question: string;
-  html: string;
-  source: string;
 }
 interface LogEntry {
   first: string;
@@ -16,104 +19,72 @@ interface LogEntry {
 }
 
 export default function Admin() {
-  // SIDHANTERING
-  const [pages, setPages]               = useState<PageRow[]>([]);
-  const [slug, setSlug]                 = useState('');
-  const [title, setTitle]               = useState('');
-  const [question, setQuestion]         = useState('');
-  const [html, setHtml]                 = useState('');
-  const [linkUrl, setLinkUrl]           = useState('');
-  const [linkText, setLinkText]         = useState('');
-  const [source, setSource]             = useState('');
-  const [msg, setMsg]                   = useState('');
+  const [pages, setPages] = useState<PageRow[]>([]);
+  const [slug, setSlug] = useState('');
+  const [title, setTitle] = useState('');
+  const [html, setHtml] = useState('');
+  const [source, setSource] = useState('');
+  const [question, setQuestion] = useState('');
+  const [msg, setMsg] = useState('');
 
-  // EMBED & LOGGAR & INSIKTER
-  const [pageUrl, setPageUrl]               = useState('');
-  const [iframeCode, setIframeCode]         = useState('');
-  const [logs, setLogs]                     = useState<LogEntry[]>([]);
-  const [logsLoading, setLogsLoading]       = useState(false);
-  const [summary, setSummary]               = useState('');
+  const [pageUrl, setPageUrl] = useState('');
+  const [iframeCode, setIframeCode] = useState('');
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [activeTab, setActiveTab]           = useState<'logs'|'insights'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'insights'>('logs');
 
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
-  // Hämta alla slugs på mount
   useEffect(() => {
-    supa.from('pages').select('slug,title')
-      .then(({ data }) => setPages(data ?? []));
+    supa.from('pages').select('slug,title').then(({ data }) => setPages(data || []));
   }, []);
 
   const clearForm = () => {
-    setSlug(''); setTitle(''); setQuestion(''); setHtml('');
-    setLinkUrl(''); setLinkText(''); setSource(''); setMsg('');
-    setPageUrl(''); setIframeCode('');
-    setLogs([]); setSummary('');
-    setLogsLoading(false); setSummaryLoading(false);
+    setSlug(''); setTitle(''); setHtml(''); setSource(''); setQuestion('');
+    setMsg(''); setPageUrl(''); setIframeCode('');
+    setLogs([]); setSummary(''); setLogsLoading(false); setSummaryLoading(false);
     setActiveTab('logs');
   };
 
-  // Redigera en sida
   const edit = async (s: string) => {
     clearForm();
     const { data } = await supa.from('pages').select('*').eq('slug', s).single();
-    if (!data) return;
-    setSlug(data.slug);
-    setTitle(data.title ?? '');
-    setQuestion(data.question);
-    setHtml(data.html);
-    setSource(data.source);
-    const origin = window.location.origin;
-    setPageUrl(`${origin}/page/${data.slug}`);
-    setIframeCode(
-      `<iframe src="${origin}/page/${data.slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`
-    );
-  };
-
-  // Spara/uppdatera sida
-  const handleSave = async () => {
-    if (!slug.trim()) { setMsg('Slug krävs'); return; }
-    const { error } = await supa.from('pages')
-      .upsert({ slug, title: title||null, question, html, source });
-    if (error) { setMsg(`Fel: ${error.message}`); return; }
-    setMsg('Sidan sparad!');
-    const { data } = await supa.from('pages').select('slug,title');
-    setPages(data ?? []);
-    const origin = window.location.origin;
-    setPageUrl(`${origin}/page/${slug}`);
-    setIframeCode(
-      `<iframe src="${origin}/page/${slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`
-    );
-  };
-
-  // Radera en slug
-  const handleDeleteSlug = async (s: string) => {
-    if (!confirm(`Radera sidan '${s}'? Detta går ej att ångra.`)) return;
-    const { error } = await supa.from('pages').delete().eq('slug', s);
-    if (error) alert(`Kunde ej radera: ${error.message}`);
-    else {
-      const { data } = await supa.from('pages').select('slug,title');
-      setPages(data ?? []);
-      if (slug===s) clearForm();
-      setMsg(`Sidan '${s}' raderad.`);
+    if (data) {
+      setSlug(data.slug);
+      setTitle(data.title ?? '');
+      setHtml(data.html);
+      setSource(data.source);
+      setQuestion(data.question);
+      const origin = window.location.origin;
+      setPageUrl(`${origin}/page/${data.slug}`);
+      setIframeCode(`<iframe src="${origin}/page/${data.slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`);
     }
   };
 
-  // Infoga länk
-  const insertLink = () => {
-    if (!htmlRef.current) return;
-    const ta = htmlRef.current;
-    const { selectionStart: start, selectionEnd: end } = ta;
-    const snippet = `<p><a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${linkText}</a></p>`;
-    setHtml(prev => prev.slice(0,start) + snippet + prev.slice(end));
-    setTimeout(()=>{
-      ta.focus();
-      ta.selectionStart = ta.selectionEnd = start + snippet.length;
-    },0);
-    setLinkUrl(''); setLinkText('');
+  const handleSave = async () => {
+    if (!slug.trim()) { setMsg('Slug krävs'); return; }
+    const { error } = await supa.from('pages').upsert({ slug, title: title||null, html, source, question });
+    if (error) { setMsg(`Fel: ${error.message}`); return; }
+    setMsg('Sidan sparad!');
+    const { data } = await supa.from('pages').select('slug,title');
+    setPages(data || []);
+    const origin = window.location.origin;
+    setPageUrl(`${origin}/page/${slug}`);
+    setIframeCode(`<iframe src="${origin}/page/${slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`);
   };
 
-  // Hämta loggar
+  const handleDeleteSlug = async (s: string) => {
+    if (!confirm(`Radera sidan '${s}'? Detta kan inte ångras.`)) return;
+    const { error } = await supa.from('pages').delete().eq('slug', s);
+    if (error) { alert(`Kunde ej radera: ${error.message}`); return; }
+    const { data } = await supa.from('pages').select('slug,title');
+    setPages(data || []);
+    if (slug === s) clearForm();
+    setMsg(`Sidan '${s}' raderad.`);
+  };
+
   const loadLogs = async () => {
     if (!slug) return;
     setLogsLoading(true);
@@ -121,163 +92,144 @@ export default function Admin() {
       .select('first,second,feedback,created_at')
       .eq('slug', slug)
       .order('created_at', { ascending: false });
-    setLogs(data ?? []);
+    setLogs(data || []);
     setLogsLoading(false);
   };
 
-  // Ladda ner loggar
   const downloadLogs = () => {
-    const filename = `${slug}-logs.json`;
-    const blob = new Blob([JSON.stringify(logs,null,2)],{type:'application/json'});
+    const blob = new Blob([JSON.stringify(logs,null,2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href=url; a.download=`${slug}-logs.json`; a.click(); URL.revokeObjectURL(url);
   };
 
-  // Radera loggar
   const handleDeleteLogs = async () => {
     if (!slug || !confirm(`Radera ALLA loggar för '${slug}'?`)) return;
     const { error } = await supa.from('conversation_logs').delete().eq('slug', slug);
-    if (error) alert(`Kunde ej radera loggar: ${error.message}`);
-    else { setLogs([]); setMsg(`Loggar raderade.`); }
+    if (error) { alert(`Kunde ej radera loggar: ${error.message}`); return; }
+    setLogs([]);
+    setMsg('Loggar raderade.');
   };
 
-  // Hämta insikter
   const loadSummary = async () => {
     if (!slug) return;
     setSummaryLoading(true);
-    try {
-      const res = await fetch(`/api/summary?slug=${encodeURIComponent(slug)}`);
-      const { summary: sum } = await res.json();
-      setSummary(sum);
-    } catch {
-      setSummary('Kunde inte hämta insikter.');
-    }
+    const res = await fetch(`/api/summary?slug=${encodeURIComponent(slug)}`);
+    const { summary: sum } = await res.json();
+    setSummary(sum);
     setSummaryLoading(false);
   };
 
-  // LTU-färger
-  const primary = 'bg-[#005eb8] hover:bg-[#004a96] text-white';
-  const danger  = 'bg-[#d60000] hover:bg-[#a00000] text-white';
-
   return (
-    <main className="p-6 max-w-4xl mx-auto space-y-8 font-sans">
-      <h1 className="text-3xl font-bold">Admin – Skapa / Redigera Sida</h1>
+    <main className="p-8 max-w-5xl mx-auto space-y-10 font-sans">
 
-      {/* Slug-lista */}
-      <div className="flex flex-wrap gap-2 bg-gray-50 p-3 rounded shadow-sm">
-        {pages.map(p=>(
-          <div key={p.slug} className="flex items-center gap-2">
-            <button
-              onClick={()=>edit(p.slug)}
-              className={`${primary} px-3 py-1 rounded-md shadow`}>
-              {p.slug}
-            </button>
-            <button
-              onClick={()=>handleDeleteSlug(p.slug)}
-              className={`${danger} px-2 py-1 rounded-md shadow`}>
-              🗑️
-            </button>
-          </div>
-        ))}
-      </div>
+      <h1 className="text-4xl font-semibold">Admin – Skapa / Redigera Sida</h1>
 
-      {/* Formulär */}
-      <div className="space-y-4">
-        <input className="w-full border p-2 rounded" placeholder="slug (URL-del)" value={slug} onChange={e=>setSlug(e.target.value)}/>
-        <input className="w-full border p-2 rounded" placeholder="Valfri titel"     value={title} onChange={e=>setTitle(e.target.value)}/>
-        <textarea ref={htmlRef} className="w-full border p-2 rounded h-32" placeholder="Inläsningsmaterial" value={html} onChange={e=>setHtml(e.target.value)}/>
-        <div className="flex gap-2">
-          <input className="flex-1 border p-2 rounded" placeholder="Länktext" value={linkText} onChange={e=>setLinkText(e.target.value)}/>
-          <input className="flex-1 border p-2 rounded" placeholder="URL (https://…)" value={linkUrl} onChange={e=>setLinkUrl(e.target.value)}/>
-          <button onClick={insertLink} className={`${primary} px-4 py-2 rounded`}>🔗 Infoga</button>
+      <Card className="shadow-lg rounded-2xl border border-gray-100 p-4">
+        <div className="flex flex-wrap gap-3">
+          {pages.map(p => (
+            <div key={p.slug} className="flex items-center gap-2">
+              <Button onClick={() => edit(p.slug)}>
+                {p.slug}
+              </Button>
+              <Button variant="destructive" onClick={() => handleDeleteSlug(p.slug)}>
+                <Trash2 size={16} />
+              </Button>
+            </div>
+          ))}
         </div>
-        <textarea className="w-full border p-2 rounded h-40" placeholder="RAG-data" value={source} onChange={e=>setSource(e.target.value)}/>
-        <textarea className="w-full border p-2 rounded h-32" placeholder="Reflektionsfråga" value={question} onChange={e=>setQuestion(e.target.value)}/>
-      </div>
+      </Card>
 
-      {/* Spara / Ny */}
-      <div className="flex gap-4">
-        <button onClick={handleSave} className={`${primary} px-6 py-2 rounded-md shadow`}>
-          💾 Spara
-        </button>
-        <button onClick={clearForm} className="bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-md shadow">
-          ✨ Ny sida
-        </button>
-      </div>
-      {msg && <p className="text-green-700">{msg}</p>}
+      <Card className="shadow-lg rounded-2xl border border-gray-100 p-6 space-y-4">
+        <input className="w-full border p-3 rounded-lg" placeholder="slug (URL-del)" value={slug} onChange={e=>setSlug(e.target.value)} />
+        <input className="w-full border p-3 rounded-lg" placeholder="Valfri titel" value={title} onChange={e=>setTitle(e.target.value)} />
+        <textarea ref={htmlRef} className="w-full border p-3 rounded-lg h-32" placeholder="Inläsningsmaterial" value={html} onChange={e=>setHtml(e.target.value)} />
+        <textarea className="w-full border p-3 rounded-lg h-32" placeholder="RAG-data" value={source} onChange={e=>setSource(e.target.value)} />
+        <textarea className="w-full border p-3 rounded-lg h-32" placeholder="Reflektionsfråga" value={question} onChange={e=>setQuestion(e.target.value)} />
+        <div className="flex gap-4">
+          <Button onClick={handleSave} className="flex items-center space-x-2">
+            <Save size={18} /> <span>Spara</span>
+          </Button>
+          <Button variant="outline" onClick={clearForm} className="flex items-center space-x-2">
+            <PlusCircle size={18} /> <span>Ny sida</span>
+          </Button>
+        </div>
+        {msg && <p className="text-green-600 mt-2">{msg}</p>}
+      </Card>
 
-      {/* Embed + Tabs */}
       {pageUrl && (
-        <div className="mt-8 p-6 bg-white rounded shadow">
-          <p className="font-semibold">Publik sida:</p>
-          <input readOnly className="w-full border p-2 rounded mb-4" value={pageUrl}/>
-          <p className="font-semibold">Iframe-kod:</p>
-          <textarea readOnly className="w-full border p-2 rounded h-20 mb-6" value={iframeCode}/>
+        <Card className="shadow-lg rounded-2xl border border-gray-100 p-6 space-y-6 relative">
+          <CardHeader>
+            <CardTitle className="text-2xl">Inställningar & Loggar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="font-medium">Publik sida:</p>
+              <input readOnly className="w-full border p-3 rounded-lg mt-1" value={pageUrl} />
+            </div>
+            <div>
+              <p className="font-medium">Iframe-kod:</p>
+              <textarea readOnly className="w-full border p-3 rounded-lg h-24 mt-1" value={iframeCode} />
+            </div>
 
-          {/* Tab-bar */}
-          <div className="flex border-b mb-4">
-            <button
-              onClick={()=>setActiveTab('logs')}
-              className={`px-4 py-2 -mb-px ${ activeTab==='logs' ? 'border-b-2 border-[#005eb8]' : '' }`}
-            >
-              Loggar
-            </button>
-            <button
-              onClick={()=>setActiveTab('insights')}
-              className={`px-4 py-2 -mb-px ${ activeTab==='insights' ? 'border-b-2 border-[#005eb8]' : '' }`}
-            >
-              Insikter
-            </button>
-          </div>
-
-          {/* Buttons under tabs */}
-          <div className="flex gap-2 mb-4">
-            <button onClick={loadLogs} className={`${primary} px-3 py-1 rounded`}>👁️ Visa</button>
-            <button onClick={downloadLogs} disabled={logs.length===0} className={`${primary} px-3 py-1 rounded ${logs.length===0? 'opacity-50 cursor-not-allowed':''}`}>
-              ⬇️ Ladda ner
-            </button>
-            <button onClick={handleDeleteLogs} disabled={logs.length===0} className={`${danger} px-3 py-1 rounded ${logs.length===0? 'opacity-50 cursor-not-allowed':''}`}>
-              🗑️ Radera
-            </button>
-            <button onClick={loadSummary} className={`${primary} px-3 py-1 rounded`}>
-              🔮 Insikter
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="relative min-h-[200px]">
-            {/* Overlay spinner */}
-            {(activeTab==='logs' ? logsLoading : summaryLoading) && (
-              <div className="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-10 rounded">
-                <div className="animate-spin h-10 w-10 border-4 border-gray-200 border-t-[#005eb8] rounded-full"></div>
-                <span className="ml-3 text-[#005eb8] font-medium">
-                  {activeTab==='logs' ? 'Hämtar loggar…' : 'Analyserar…'}
-                </span>
-              </div>
-            )}
-
-            {/* Logs */}
-            {activeTab==='logs' && logs.length>0 && !logsLoading && (
-              <div className="space-y-4">
-                {logs.map((l,i)=>(
-                  <div key={i} className="p-3 border rounded">
-                    <p className="text-sm text-gray-500">{new Date(l.created_at).toLocaleString()}</p>
-                    <p><strong>Före:</strong> {l.first}</p>
-                    <p><strong>Efter:</strong> {l.second}</p>
-                    <p><strong>Feedback:</strong> {l.feedback}</p>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="border-b">
+              <TabsList>
+                <TabsTrigger value="logs">Loggar</TabsTrigger>
+                <TabsTrigger value="insights">Insikter</TabsTrigger>
+              </TabsList>
+              <TabsContent value="logs">
+                <div className="flex gap-3 my-4">
+                  <Button onClick={loadLogs} className="flex items-center space-x-2">
+                    <Eye size={16} /> <span>Visa loggar</span>
+                  </Button>
+                  <Button onClick={downloadLogs} disabled={logs.length===0} className="flex items-center space-x-2">
+                    <Download size={16} /> <span>Ladda ner</span>
+                  </Button>
+                  <Button variant="destructive" onClick={handleDeleteLogs} disabled={logs.length===0} className="flex items-center space-x-2">
+                    <Trash2 size={16} /> <span>Radera</span>
+                  </Button>
+                </div>
+                {logsLoading && (
+                  <div className="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center rounded-2xl">
+                    <CircleSpinner size={50} />
+                    <p className="mt-4 text-xl font-medium">Hämtar loggar…</p>
                   </div>
+                )}
+                {!logsLoading && logs.map((l,i)=>(
+                  <Card key={i} className="mb-4">
+                    <CardContent>
+                      <p className="text-sm text-gray-500">{new Date(l.created_at).toLocaleString()}</p>
+                      <p><strong>Före:</strong> {l.first}</p>
+                      <p><strong>Efter:</strong> {l.second}</p>
+                      <p><strong>Feedback:</strong> {l.feedback}</p>
+                    </CardContent>
+                  </Card>
                 ))}
-              </div>
-            )}
-
-            {/* Insights */}
-            {activeTab==='insights' && !summaryLoading && summary && (
-              <div className="prose max-w-none">
-                {summary.split('\n').map((row,i)=><p key={i}>{row}</p>)}
-              </div>
-            )}
-          </div>
-        </div>
+              </TabsContent>
+              <TabsContent value="insights">
+                <div className="flex gap-3 my-4">
+                  <motion.button
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                    onClick={loadSummary}
+                    className="flex items-center space-x-2 bg-gradient-to-r from-[#005eb8] to-[#0073e6] text-white px-4 py-2 rounded-lg shadow-md"
+                  >
+                    <Sparkle size={16} /> <span>Hämta insikter</span>
+                  </motion.button>
+                </div>
+                {summaryLoading && (
+                  <div className="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center rounded-2xl">
+                    <CircleSpinner size={50} />
+                    <p className="mt-4 text-xl font-medium">Analyserar…</p>
+                  </div>
+                )}
+                {!summaryLoading && summary && (
+                  <div className="prose max-w-none">
+                    {summary.split('\n').map((line,i)=><p key={i}>{line}</p>)}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
       )}
     </main>
   );
