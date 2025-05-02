@@ -34,12 +34,17 @@ export default function Admin() {
 
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch existing pages
   useEffect(() => {
     supa.from('pages').select('slug,title').then(({ data }) => setPages(data ?? []));
   }, []);
 
-  // Load a page for editing
+  const clear = () => {
+    setSlug(''); setTitle(''); setQuestion('');
+    setHtml(''); setLinkUrl(''); setLinkText('');
+    setSource(''); setMsg(''); setPageUrl(''); setIframeCode('');
+    setLogs([]); setSummary('');
+  };
+
   const edit = async (s: string) => {
     clear();
     const { data } = await supa.from('pages').select('*').eq('slug', s).single();
@@ -51,7 +56,6 @@ export default function Admin() {
     setSource(data.source);
   };
 
-  // Load logs for the slug
   const loadLogs = async () => {
     if (!slug) return;
     const { data } = await supa
@@ -62,7 +66,6 @@ export default function Admin() {
     setLogs(data ?? []);
   };
 
-  // Download logs as JSON
   const downloadLogs = () => {
     const filename = `${slug}-logs.json`;
     const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
@@ -74,7 +77,6 @@ export default function Admin() {
     URL.revokeObjectURL(url);
   };
 
-  // Insert link at cursor
   const insertLink = () => {
     if (!htmlRef.current) return;
     const textarea = htmlRef.current;
@@ -92,7 +94,6 @@ export default function Admin() {
     setLinkText('');
   };
 
-  // Save page to Supabase
   const handleSave = async () => {
     if (!slug.trim()) {
       setMsg('Slug krävs');
@@ -104,42 +105,31 @@ export default function Admin() {
       return;
     }
     setMsg('Sidan sparad!');
-    // refresh pages
     const { data } = await supa.from('pages').select('slug,title');
     setPages(data ?? []);
-    // generate embed info
     const origin = window.location.origin;
     const u = `${origin}/page/${slug}`;
     setPageUrl(u);
     setIframeCode(`<iframe src=\"${u}\" width=\"100%\" height=\"800\" frameborder=\"0\" scrolling=\"auto\"></iframe>`);
   };
 
-  // Fetch summary for slug
   const loadSummary = async () => {
     if (!slug) return;
     setSummaryLoading(true);
     try {
       const res = await fetch(`/api/summary?slug=${encodeURIComponent(slug)}`);
-      const { summary } = await res.json();
-      setSummary(summary);
+      const json = await res.json();
+      setSummary(json.summary);
     } catch (err) {
       console.error('Failed to load summary:', err);
-      setSummary('Kunde inte hämta sammanfattning.');
+      setSummary('Kunde inte hämta insikter.');
     }
     setSummaryLoading(false);
-  };
-
-  const clear = () => {
-    setSlug(''); setTitle(''); setQuestion('');
-    setHtml(''); setLinkUrl(''); setLinkText('');
-    setSource(''); setMsg(''); setPageUrl(''); setIframeCode('');
-    setLogs([]); setSummary('');
   };
 
   return (
     <main className="p-6 max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold">Admin – skapa / redigera sida</h1>
-
       <div className="border p-2 rounded bg-gray-50 flex flex-wrap gap-2">
         {pages.map(p => (
           <button key={p.slug} onClick={() => edit(p.slug)} className="px-2 py-1 bg-blue-100 rounded">
@@ -148,15 +138,15 @@ export default function Admin() {
         ))}
       </div>
 
-      {/* Form fields */}
       <input className="w-full border p-2" placeholder="slug (URL-del)" value={slug} onChange={e => setSlug(e.target.value)} />
       <input className="w-full border p-2" placeholder="Valfri titel" value={title} onChange={e => setTitle(e.target.value)} />
       <textarea ref={htmlRef} className="w-full border p-2 h-32" placeholder="Inläsningsmaterial (HTML/text)" value={html} onChange={e => setHtml(e.target.value)} />
       <div className="flex space-x-2">
-            <button onClick={loadLogs} className="px-3 py-1 bg-gray-200 rounded">Visa loggar</button>
-            <button onClick={downloadLogs} className="px-3 py-1 bg-indigo-600 text-white rounded">Ladda ner loggar</button>
-            <button onClick={loadSummary} className="px-3 py-1 bg-purple-600 text-white rounded">Insikter och rekommendationer</button>
-          </div>
+        <button onClick={loadLogs} className="px-3 py-1 bg-gray-200 rounded">Visa loggar</button>
+        <button onClick={downloadLogs} className="px-3 py-1 bg-indigo-600 text-white rounded">Ladda ner loggar</button>
+        <button onClick={loadSummary} className="px-3 py-1 bg-purple-600 text-white rounded">Insikter och rekommendationer</button>
+      </div>
+
       <textarea className="w-full border p-2 h-40" placeholder="RAG-data – källtext som GPT använder" value={source} onChange={e => setSource(e.target.value)} />
       <textarea className="w-full border p-2 h-32" placeholder="Reflektionsfråga" value={question} onChange={e => setQuestion(e.target.value)} />
 
@@ -167,7 +157,6 @@ export default function Admin() {
 
       {msg && <p className="text-sm text-green-700">{msg}</p>}
 
-      {/* Embed and logs section */}
       {pageUrl && (
         <div className="mt-4 p-4 border rounded bg-gray-50 space-y-4">
           <p className="font-semibold">Publik länk:</p>
@@ -175,15 +164,9 @@ export default function Admin() {
           <p className="font-semibold">iframe-kod för Canvas:</p>
           <textarea readOnly className="w-full border p-2 h-20" value={iframeCode} />
 
-          <div className="flex space-x-2">
-            <button onClick={loadLogs} className="px-3 py-1 bg-gray-200 rounded">Visa loggar</button>
-            {logs.length > 0 && <button onClick={downloadLogs} className="px-3 py-1 bg-indigo-600 text-white rounded">Ladda ner loggar</button>}
-            <button onClick={loadSummary} className="px-3 py-1 bg-purple-600 text-white rounded">Sammanfattning</button>
-          </div>
-
-          {logs.length > 0 && (
-            <section className="mt-4 max-h-64 overflow-auto border p-2 rounded space-y-4">
-              <h2 className="text-xl font-semibold">Loggar för {slug}</h2>
+          <section className="mt-4">
+            <h2 className="text-xl font-semibold">Loggar för {slug}</h2>
+            <div className="max-h-64 overflow-auto border p-2 rounded space-y-4">
               {logs.map((l, i) => (
                 <div key={i}>
                   <p className="text-sm text-gray-500">{new Date(l.created_at).toLocaleString()}</p>
@@ -193,17 +176,17 @@ export default function Admin() {
                   <hr className="my-2" />
                 </div>
               ))}
-            </section>
-          )}
+            </div>
 
-          {/* Summary display */}
-          <section className="mt-4">
-            <h2 className="text-xl font-semibold">Insikter & rekommendationer</h2>
-            {summaryLoading ? (
-              <p>Hämtar sammanfattning…</p>
-            ) : (
-              <div className="p-2 border rounded whitespace-pre-line">{summary}</div>
-            )}
+            <div className="flex space-x-2 mt-2">
+              <button onClick={downloadLogs} className="px-3 py-1 bg-indigo-600 text-white rounded">Ladda ner loggar</button>
+              <button onClick={loadSummary} className="px-3 py-1 bg-purple-600 text-white rounded">Insikter och rekommendationer</button>
+            </div>
+
+            <section className="mt-4">
+              <h2 className="text-xl font-semibold">Insikter & rekommendationer</h2>
+              {summaryLoading ? <p>Hämtar insikter…</p> : <div className="p-2 border rounded whitespace-pre-line">{summary}</div>}
+            </section>
           </section>
         </div>
       )}
