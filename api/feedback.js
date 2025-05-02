@@ -1,14 +1,5 @@
 // api/feedback.js
 const OpenAI = require('openai');
-let franc, langs;
-try {
-  franc = require('franc');
-  langs = require('langs');
-} catch (e) {
-  // Om packages inte finns, så ignorerar vi och fallbackar till engelska
-  franc = null;
-  langs = null;
-}
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -16,62 +7,41 @@ const supabase = createClient(
   process.env.VITE_SUPA_KEY
 );
 
-// Robust språkdetektion med fallbacks
-function detectLangCode(text) {
-  if (franc && langs) {
-    try {
-      const code3 = franc(text, { minLength: 3 });
-      const info = langs.where('3', code3);
-      if (info && info['1']) return info['1'];
-    } catch (err) {
-      console.warn('Språkdetektion misslyckades, fallbackar till "en":', err);
-    }
-  }
-  // Enkelt fallback baserat på åäö
-  return /[åäöÅÄÖ]/.test(text) ? 'sv' : 'en';
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).send('Method not allowed');
   }
 
-  // Logga inkommande body för felsökning
-  console.log('📥 /api/feedback body:', req.body);
-
-  // Hämta parametrar
+  // 1) Hämta indata
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
     const safeSource = source.slice(0, 9000);
 
-    // Detektera språk
-    const langCode = detectLangCode(first);
-    console.log('🈶 Detekterat språk:', langCode);
-
-    // Skapa tidsbullet
+    // 2) Bygg tidsbullet
     let timeBullet = '';
     if (second && typeof delta_seconds === 'number') {
       timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
       if (delta_seconds < 60) {
-        timeBullet += ` (Under 60 s – ta gärna några extra minuter för att reflektera och fördjupa ditt svar.)`;
+        timeBullet += ` (Under 60 s – ta gärna några extra minuter för att reflektera noggrant och fördjupa ditt svar.)`;
       }
     }
 
-    // Systemprompt som styr språk och ton
+    // 3) System-prompt som ger GPT både första svaret och all ton/struktur‐instruktion
     const systemPrompt = `
-Du är en empatisk granskningsassistent.
-– Tala varmt och uppmuntrande till användaren med "du"/"din".
-– Svara på språket med ISO-kod "${langCode}".
-– Använd punktlista och följ denna struktur:
+Du är en empatisk granskningsassistent. Här är användarens första svar:
+"""${first}"""
+Identifiera språket i det och svara all din återkoppling på exakt samma språk.
+Tala varmt och uppmuntrande direkt till användaren med "du"/"din". 
+Använd punktlista och följ alltid strukturen:
   1) Bekräfta förbättringar
   2) Identifiera kvarstående brister
   3) Ge konkreta råd
   4) Redovisa tidsåtgång.
 `.trim();
 
-    // User-prompt
+    // 4) User-prompt beroende på om det är första eller andra svaret
     let userPrompt;
     if (!second) {
       userPrompt = `
@@ -89,7 +59,7 @@ ${first}
 2. Du kan utveckla…
 3. Tips inför din nästa omformulering:…
 
-Svara enligt instruktionerna ovan.`;
+Svara enligt systeminstruktionerna ovan.`;
     } else {
       userPrompt = `
 Utgå ENDAST från följande källtext:
@@ -110,10 +80,10 @@ ${second}
 3. Två konkreta, vänliga råd:…
 ${timeBullet}
 
-Svara enligt instruktionerna ovan.`;
+Svara enligt systeminstruktionerna ovan.`;
     }
 
-    // Anropa OpenAI
+    // 5) Anropa OpenAI
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -123,9 +93,10 @@ Svara enligt instruktionerna ovan.`;
       ],
       temperature: 0.7,
     });
+
     const feedback = completion.choices[0].message.content;
 
-    // Spara logg om det är reviderat svar
+    // 6) Spara logg för det reviderade svaret
     if (second) {
       await supabase.from('conversation_logs').insert({
         slug,
@@ -136,9 +107,10 @@ Svara enligt instruktionerna ovan.`;
       });
     }
 
+    // 7) Skicka tillbaka feedback
     return res.status(200).json({ feedback });
   } catch (err) {
-    console.error('❌ Fel i /api/feedback:', err);
+    console.error('Error in /api/feedback:', err);
     return res.status(500).json({ error: err.message });
   }
 };
