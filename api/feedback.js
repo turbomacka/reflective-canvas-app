@@ -31,8 +31,8 @@ module.exports = async function handler(req, res) {
   const safeSource = source.length > 9000 ? source.slice(0, 9000) : source;
 
   const prompt = second.trim() === ''
-    ? `
-Du är en personlig granskningsassistent. Bedöm om ditt svar är helt korrekt mot källtexten nedan eller ofullständigt/fel.
+    ? /* quick assessment prompt */
+      `Du är en personlig granskningsassistent. Bedöm om ditt svar är helt korrekt mot källtexten nedan eller ofullständigt/fel.
 
 KÄLLTEXT:
 """${safeSource}"""
@@ -40,10 +40,9 @@ KÄLLTEXT:
 Ditt svar:
 """${first}"""
 
-Svara exakt i JSON: { "perfect": true/false, "fb": "Kort feedback på svenska" }
-    `
-    : `
-Du är en personlig granskningsassistent. Använd endast källtexten nedan som facit.
+Returnera endast JSON utan kodblock eller markdown, t.ex. {"perfect": true, "fb": "Kort feedback utan markdown"}`
+    : /* full feedback prompt */
+      `Du är en personlig granskningsassistent. Använd endast källtexten nedan som facit.
 
 KÄLLTEXT:
 """${safeSource}"""
@@ -58,8 +57,7 @@ När du utvecklade till ditt andra svar:
 2. Punktvis: saknade aspekter eller feltolkningar i ditt andra svar enligt källtexten.
 3. Ge två konkreta råd för hur du kan göra det andra svaret helt korrekt.
 
-Svara på svenska, använd punktlistor.
-    `;
+Svara på svenska, använd punktlistor utan markdown eller kodblock.`;
 
   // 4. Call OpenAI
   let feedback = '';
