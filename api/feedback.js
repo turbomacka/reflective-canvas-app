@@ -2,7 +2,6 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initiera Supabase‐klient
 const supabase = createClient(
   process.env.VITE_SUPA_URL.replace(/^https:\/\//, 'https://'),
   process.env.VITE_SUPA_KEY
@@ -13,90 +12,93 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method not allowed');
   }
 
-  // Läs parametrar
+  // 1) Läs in parametrar
   let { slug = '', first = '', second, source = '', delta_seconds } =
-    typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    typeof req.body === 'string'
+      ? JSON.parse(req.body)
+      : req.body;
 
-  try {
-    const safeSource = source.slice(0, 9000);
+  // 2) Begränsa källtextens längd
+  const safeSource = source.slice(0, 9000);
 
-    // Tidsbullet för punkt 4
-    let timeBullet = '';
-    if (second && typeof delta_seconds === 'number') {
-      timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
-      if (delta_seconds < 60) {
-        timeBullet += ` (Under 60 s – ta gärna några extra minuter för att reflektera över materialet och fördjupa ditt svar.)`;
-      }
+  // 3) Bygg tidsbullet (#4)
+  let timeBullet = '';
+  if (second != null && typeof delta_seconds === 'number') {
+    timeBullet = `4. Du lade ${delta_seconds} sekunder på din omformulering.`;
+    if (delta_seconds < 60) {
+      timeBullet += ` (Under 60 s – överväg att ta några extra minuter för att fördjupa ditt svar.)`;
     }
+  }
 
-    // System-prompt: styr språk och ton
-    const systemPrompt = `
-Du använder alltid samma språk som användaren skriver på. Dvs. samma som i parametern "first"    
-Du är en empatisk granskningsassisten som alltid svarar på samma språk som användaren skriver på. 
-– Tala varmt och uppmuntrande, direkt till användaren med "du"/"din" och använd alltid samma språk som användaren. 
-– Använd punkter och följ alltid denna struktur: 
-  1) Bekräfta förbättringar om sådana skett, det är inte säkert och om inga förbättringar skett så påpeka gärna det 
-  2) Identifiera kvarstående brister 
-  3) Ge konkreta råd 
-  4) Redovisa tidsåtgång.`;
+  // 4) System-prompt som tvingar språk­spegling och struktur
+  const systemPrompt = `
+Du är en empatisk granskningsassistent.  
+– Läs av språket i användarens första svar exakt och svar på **samma språk**.  
+– Använd direkt tilltal (“du”/”din”).  
+– Ge feedback i punktform med exakt denna ordning:
+  1) Bekräfta förbättringar – om inga tydliga förbättringar finns, säg det.
+  2) Identifiera kvarstående brister.
+  3) Ge två konkreta, vänliga råd för att göra svaret ännu bättre.
+  4) Redovisa tidsåtgång (punkt 4).`;
 
-    // Bygg prompt beroende på fas
-    let userPrompt;
-    if (!second) {
-      userPrompt = `
-Utgå ENDAST från följande källtext:
-
-────────────────────────────────────
-${safeSource}
-────────────────────────────────────
-
-**Ditt svar (#1):**
-${first}
-
-**Din uppgift:**
-1. Du har gjort bra när du…  
-2. Du kan utveckla…  
-3. Tips inför din nästa omformulering:…  
-
-Svara enligt systeminstruktionerna ovan.`;
-    } else {
-      userPrompt = `
-Utgå ENDAST från följande källtext:
+  // 5) Bygg user-prompt beroende på om det är initial eller final feedback
+  let userPrompt;
+  if (!second) {
+    userPrompt = `
+Här är den text du ska utgå från:
 
 ────────────────────────────────────
 ${safeSource}
 ────────────────────────────────────
 
-**Ditt första svar:**
+**Användarens första svar:**
 ${first}
 
-**Ditt reviderade svar:**
+Din uppgift:  
+1) Bekräfta vad som är bra i svaret.  
+2) Peka ut vad som saknas eller kan förbättras enligt texten.  
+3) Ge konkreta, vänliga tips inför nästa version.  
+
+Följ systeminstruktionerna.`;
+  } else {
+    userPrompt = `
+Här är den text du ska utgå från:
+
+────────────────────────────────────
+${safeSource}
+────────────────────────────────────
+
+**Första svaret:**
+${first}
+
+**Reviderat svar:**
 ${second}
 
 **Din uppgift:**
-1. Du har förbättrat…  
-2. Du kan fortfarande utveckla…  
-3. Två konkreta, vänliga råd:…  
+1) Beskriv vilka förbättringar som faktiskt skett jämfört med första svaret.  
+2) Peka ut vilka delar som fortfarande behöver utvecklas enligt texten.  
+3) Ge två konkreta, vänliga råd för att göra det reviderade svaret ännu bättre.  
 ${timeBullet}
 
-Svara enligt systeminstruktionerna ovan.`;
-    }
+Följ systeminstruktionerna.`;
+  }
 
-    // Anropa GPT med system + user
+  try {
+    // 6) Anropa OpenAI
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: systemPrompt.trim() },
-        { role: 'user', content: userPrompt.trim() }
+        { role: 'user',   content: userPrompt.trim() }
       ],
       temperature: 0.7,
     });
 
     const feedback = completion.choices[0].message.content;
 
-    // Spara endast final feedback i loggen
-    if (second) {
+    // 7) Spara logg om det är det reviderade svaret
+    if (second != null) {
       await supabase.from('conversation_logs').insert({
         slug,
         first,
@@ -106,6 +108,7 @@ Svara enligt systeminstruktionerna ovan.`;
       });
     }
 
+    // 8) Returnera feedback
     return res.status(200).json({ feedback });
   } catch (err) {
     console.error('Error in /api/feedback:', err);
