@@ -2,7 +2,7 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initiera Supabase-klient
+// Initiera Supabase-klienten
 const supabase = createClient(
   process.env.VITE_SUPA_URL.replace(/^https:\/\//, 'https://'),
   process.env.VITE_SUPA_KEY
@@ -13,35 +13,33 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method not allowed');
   }
 
-  // Hämta parametrar
+  // Läs in parametrar från body
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
     const safeSource = source.slice(0, 9000);
 
-    // Generera tidspåminnelse om revideringen gick snabbt
-    let timeRemark = '';
+    // Bygg tidstext alltid med!
+    let timeInfo = '';
     if (second && typeof delta_seconds === 'number') {
-      // Inkludera alltid tidsåtgång
-      timeRemark = `\n\n**Tidsåtgång för din revidering:** ${delta_seconds} sekunder.`;
-      // Lägg till uppmaning vid < 60 sek
+      timeInfo = `**Tidsåtgång för din revidering:** ${delta_seconds} sekunder.`;
       if (delta_seconds < 60) {
-        timeRemark += ` Observera att du bara använde ${delta_seconds} sekunder – ta gärna några extra minuter för att verkligen sätta dig in i materialet och fundera genom ditt svar.`;
+        timeInfo += ` Observera att du bara ägnade ${delta_seconds} sekunder åt revisionen – ta gärna några extra minuter för att reflektera över materialet och fördjupa ditt svar.`;
       }
     }
 
-    // Instruktion om ton
+    // Toninstruktion
     const toneInstruction = `
-Var varm och uppmuntrande. Tala direkt till mottagaren ("du"/"din") och låt dem känna att deras lärande uppmärksammas.`;
+Var varm och uppmuntrande. Tala direkt till användaren ("du"/"din") och visa att deras lärande uppmärksammas.`;
 
     let prompt;
 
     if (!second) {
-      // --- Första återkopplingen ---
+      // Första återkopplingen
       prompt = `
 ${toneInstruction}
-Du är en empatisk granskningsassistent. Använd endast följande KÄLLTEXT:
+Utgå ENDAST från följande källtext och ge feedback på första svaret.
 
 ────────────────────────────────────
 KÄLLTEXT:
@@ -49,19 +47,19 @@ KÄLLTEXT:
 ────────────────────────────────────
 
 **Ditt svar:**
-"""${first}"""
+${first}
 
 **Din uppgift:**
-1. Bekräfta vad du gjorde bra och visa uppskattning för din insats.
-2. Identifiera viktiga aspekter som saknas eller kan förbättras enligt källtexten.
-3. Ge konkreta och vänliga tips för hur du kan stärka ditt svar innan du reviderar det.
+1. Bekräfta vad du gjorde bra och visa uppskattning.
+2. Identifiera vad som saknas eller kan förbättras enligt källtexten.
+3. Ge konkreta, vänliga tips inför din revision.
 
 Svara på svenska, i punktform, med en varm och personlig ton.`;
     } else {
-      // --- Andra återkopplingen ---
+      // Andra återkopplingen
       prompt = `
 ${toneInstruction}
-Du är en empatisk granskningsassistent. Utgå ENDAST från följande KÄLLTEXT:
+Utgå ENDAST från följande källtext och ge feedback på ditt reviderade svar.
 
 ────────────────────────────────────
 KÄLLTEXT:
@@ -69,15 +67,17 @@ KÄLLTEXT:
 ────────────────────────────────────
 
 **Ditt första svar:**
-"""${first}"""
+${first}
 
 **Ditt reviderade svar:**
-"""${second}"""${timeRemark}
+${second}
+
+${timeInfo}
 
 **Din uppgift:**
-1. Punktvis: Beskriv vilka förbättringar du gjort i ditt andra svar jämfört med det första – hänvisa till källtexten och ge erkännande för dina framsteg.
-2. Punktvis: Visa vilka delar som fortfarande saknas eller kan utvecklas vidare enligt källtexten.
-3. Två konkreta, vänliga råd för hur du kan göra ditt svar ännu mer komplett.
+1. Beskriv vilka förbättringar du gjort i ditt andra svar jämfört med det första – hänvisa till källtexten och erkänn dina framsteg.
+2. Visa vilka delar som fortfarande kan utvecklas vidare enligt källtexten.
+3. Ge två konkreta, vänliga råd för hur du kan göra ditt svar ännu mer komplett.
 
 Svara på svenska, i punktform, med en varm och uppmuntrande ton.`;
     }
