@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { supa } from '../lib/supa';
+import { supa } from '@/lib/supa';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { CircleSpinner } from '@/components/ui/spinner';
+import { Spinner } from '@/components/ui/spinner';
 import { Eye, Download, Trash2, Sparkle, Save, PlusCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -11,6 +11,7 @@ interface PageRow {
   slug: string;
   title: string | null;
 }
+
 interface LogEntry {
   first: string;
   second: string;
@@ -19,60 +20,67 @@ interface LogEntry {
 }
 
 export default function Admin() {
-  const [pages, setPages] = useState<PageRow[]>([]);
-  const [slug, setSlug] = useState('');
-  const [title, setTitle] = useState('');
-  const [html, setHtml] = useState('');
-  const [source, setSource] = useState('');
-  const [question, setQuestion] = useState('');
-  const [msg, setMsg] = useState('');
+  // SIDHANTERING
+  const [pages, setPages]               = useState<PageRow[]>([]);
+  const [slug, setSlug]                 = useState('');
+  const [title, setTitle]               = useState('');
+  const [html, setHtml]                 = useState('');
+  const [source, setSource]             = useState('');
+  const [question, setQuestion]         = useState('');
+  const [msg, setMsg]                   = useState('');
 
-  const [pageUrl, setPageUrl] = useState('');
-  const [iframeCode, setIframeCode] = useState('');
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [summary, setSummary] = useState('');
+  // EMBED, LOGGAR & INSIKTER
+  const [pageUrl, setPageUrl]               = useState('');
+  const [iframeCode, setIframeCode]         = useState('');
+  const [logs, setLogs]                     = useState<LogEntry[]>([]);
+  const [logsLoading, setLogsLoading]       = useState(false);
+  const [summary, setSummary]               = useState('');
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'logs' | 'insights'>('logs');
+  const [activeTab, setActiveTab]           = useState<'logs'|'insights'>('logs');
 
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
+  // Hämta slugs på mount
   useEffect(() => {
-    supa.from('pages').select('slug,title').then(({ data }) => setPages(data || []));
+    supa.from('pages').select('slug,title')
+      .then(({ data }) => setPages(data || []));
   }, []);
 
   const clearForm = () => {
-    setSlug(''); setTitle(''); setHtml(''); setSource(''); setQuestion('');
-    setMsg(''); setPageUrl(''); setIframeCode('');
-    setLogs([]); setSummary(''); setLogsLoading(false); setSummaryLoading(false);
-    setActiveTab('logs');
+    setSlug(''); setTitle(''); setHtml(''); setSource(''); setQuestion(''); setMsg('');
+    setPageUrl(''); setIframeCode(''); setLogs([]); setSummary('');
+    setLogsLoading(false); setSummaryLoading(false); setActiveTab('logs');
   };
 
   const edit = async (s: string) => {
     clearForm();
     const { data } = await supa.from('pages').select('*').eq('slug', s).single();
-    if (data) {
-      setSlug(data.slug);
-      setTitle(data.title ?? '');
-      setHtml(data.html);
-      setSource(data.source);
-      setQuestion(data.question);
-      const origin = window.location.origin;
-      setPageUrl(`${origin}/page/${data.slug}`);
-      setIframeCode(`<iframe src="${origin}/page/${data.slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`);
-    }
+    if (!data) return;
+    setSlug(data.slug);
+    setTitle(data.title ?? '');
+    setHtml(data.html);
+    setSource(data.source);
+    setQuestion(data.question);
+    const origin = window.location.origin;
+    setPageUrl(`${origin}/page/${data.slug}`);
+    setIframeCode(
+      `<iframe src="${origin}/page/${data.slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`
+    );
   };
 
   const handleSave = async () => {
     if (!slug.trim()) { setMsg('Slug krävs'); return; }
-    const { error } = await supa.from('pages').upsert({ slug, title: title||null, html, source, question });
+    const { error } = await supa.from('pages')
+      .upsert({ slug, title: title||null, html, source, question });
     if (error) { setMsg(`Fel: ${error.message}`); return; }
     setMsg('Sidan sparad!');
     const { data } = await supa.from('pages').select('slug,title');
     setPages(data || []);
     const origin = window.location.origin;
     setPageUrl(`${origin}/page/${slug}`);
-    setIframeCode(`<iframe src="${origin}/page/${slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`);
+    setIframeCode(
+      `<iframe src="${origin}/page/${slug}" width="100%" height="800" frameborder="0" scrolling="auto"></iframe>`
+    );
   };
 
   const handleDeleteSlug = async (s: string) => {
@@ -81,8 +89,19 @@ export default function Admin() {
     if (error) { alert(`Kunde ej radera: ${error.message}`); return; }
     const { data } = await supa.from('pages').select('slug,title');
     setPages(data || []);
-    if (slug === s) clearForm();
+    if (slug===s) clearForm();
     setMsg(`Sidan '${s}' raderad.`);
+  };
+
+  const insertLink = () => {
+    if (!htmlRef.current) return;
+    const { selectionStart: start, selectionEnd: end } = htmlRef.current;
+    const snippet = `<p><a href="${source}" target="_blank" rel="noopener noreferrer">${question}</a></p>`;
+    setHtml(prev => prev.slice(0, start) + snippet + prev.slice(end));
+    setTimeout(() => {
+      htmlRef.current?.focus();
+      htmlRef.current!.selectionStart = htmlRef.current!.selectionEnd = start + snippet.length;
+    }, 0);
   };
 
   const loadLogs = async () => {
@@ -97,41 +116,44 @@ export default function Admin() {
   };
 
   const downloadLogs = () => {
-    const blob = new Blob([JSON.stringify(logs,null,2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download=`${slug}-logs.json`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href = url; a.download=`${slug}-logs.json`; a.click(); URL.revokeObjectURL(url);
   };
 
   const handleDeleteLogs = async () => {
     if (!slug || !confirm(`Radera ALLA loggar för '${slug}'?`)) return;
     const { error } = await supa.from('conversation_logs').delete().eq('slug', slug);
     if (error) { alert(`Kunde ej radera loggar: ${error.message}`); return; }
-    setLogs([]);
-    setMsg('Loggar raderade.');
+    setLogs([]); setMsg('Loggar raderade.');
   };
 
   const loadSummary = async () => {
     if (!slug) return;
     setSummaryLoading(true);
-    const res = await fetch(`/api/summary?slug=${encodeURIComponent(slug)}`);
-    const { summary: sum } = await res.json();
-    setSummary(sum);
+    try {
+      const res = await fetch(`/api/summary?slug=${encodeURIComponent(slug)}`);
+      const { summary: sum } = await res.json();
+      setSummary(sum);
+    } catch {
+      setSummary('Kunde inte hämta insikter.');
+    }
     setSummaryLoading(false);
   };
 
   return (
     <main className="p-8 max-w-5xl mx-auto space-y-10 font-sans">
-
       <h1 className="text-4xl font-semibold">Admin – Skapa / Redigera Sida</h1>
 
+      {/* Slug-lista */}
       <Card className="shadow-lg rounded-2xl border border-gray-100 p-4">
         <div className="flex flex-wrap gap-3">
           {pages.map(p => (
             <div key={p.slug} className="flex items-center gap-2">
-              <Button onClick={() => edit(p.slug)}>
+              <Button onClick={()=>edit(p.slug)}>
                 {p.slug}
               </Button>
-              <Button variant="destructive" onClick={() => handleDeleteSlug(p.slug)}>
+              <Button variant="destructive" onClick={()=>handleDeleteSlug(p.slug)}>
                 <Trash2 size={16} />
               </Button>
             </div>
@@ -139,6 +161,7 @@ export default function Admin() {
         </div>
       </Card>
 
+      {/* Form */}
       <Card className="shadow-lg rounded-2xl border border-gray-100 p-6 space-y-4">
         <input className="w-full border p-3 rounded-lg" placeholder="slug (URL-del)" value={slug} onChange={e=>setSlug(e.target.value)} />
         <input className="w-full border p-3 rounded-lg" placeholder="Valfri titel" value={title} onChange={e=>setTitle(e.target.value)} />
@@ -156,6 +179,7 @@ export default function Admin() {
         {msg && <p className="text-green-600 mt-2">{msg}</p>}
       </Card>
 
+      {/* Embed + Tabs */}
       {pageUrl && (
         <Card className="shadow-lg rounded-2xl border border-gray-100 p-6 space-y-6 relative">
           <CardHeader>
@@ -171,6 +195,7 @@ export default function Admin() {
               <textarea readOnly className="w-full border p-3 rounded-lg h-24 mt-1" value={iframeCode} />
             </div>
 
+            {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="border-b">
               <TabsList>
                 <TabsTrigger value="logs">Loggar</TabsTrigger>
@@ -190,7 +215,7 @@ export default function Admin() {
                 </div>
                 {logsLoading && (
                   <div className="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center rounded-2xl">
-                    <CircleSpinner size={50} />
+                    <Spinner size={50} />
                     <p className="mt-4 text-xl font-medium">Hämtar loggar…</p>
                   </div>
                 )}
@@ -205,6 +230,7 @@ export default function Admin() {
                   </Card>
                 ))}
               </TabsContent>
+
               <TabsContent value="insights">
                 <div className="flex gap-3 my-4">
                   <motion.button
@@ -217,7 +243,7 @@ export default function Admin() {
                 </div>
                 {summaryLoading && (
                   <div className="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center rounded-2xl">
-                    <CircleSpinner size={50} />
+                    <Spinner size={50} />
                     <p className="mt-4 text-xl font-medium">Analyserar…</p>
                   </div>
                 )}
