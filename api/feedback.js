@@ -2,6 +2,7 @@
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
+// Initiera Supabase‐klient
 const supabase = createClient(
   process.env.VITE_SUPA_URL.replace(/^https:\/\//, 'https://'),
   process.env.VITE_SUPA_KEY
@@ -14,29 +15,36 @@ module.exports = async function handler(req, res) {
 
   // Läs in parametrar
   let { slug = '', first = '', second, source = '', delta_seconds } =
-    typeof req.body === 'string'
-      ? JSON.parse(req.body)
-      : req.body;
+    typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
     const safeSource = source.slice(0, 9000);
 
-    // Förbered tidsuppgift för bullet 4
-    let timeInstruction = `4. **Tidsåtgång:** Du lade ${delta_seconds ?? 'okänt'} sekunder på revideringen.`;
-    if (second && typeof delta_seconds === 'number' && delta_seconds < 60) {
-      timeInstruction += ` (Obs! Det är under 60 s – ta gärna några extra minuter för att reflektera och fördjupa ditt svar.)`;
+    // Bygg tidsbullet
+    let timeBullet = '';
+    if (second && typeof delta_seconds === 'number') {
+      timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
+      if (delta_seconds < 60) {
+        timeBullet += ` (Obs! Under 60 s – ta gärna några extra minuter för att reflektera och fördjupa ditt svar.)`;
+      }
     }
 
-    // Toninstruktion
-    const tone = `
-Var varm och uppmuntrande. Tala direkt till användaren ("du"/"din") och visa att deras lärande uppmärksammas.`;
+    // Meta‐instruktioner
+    const meta = `
+Var varm och uppmuntrande. Tala direkt till användaren ("du"/"din") och visa att deras lärande uppmärksammas.
+Svara alltid på samma språk som användaren använde i sitt första svar.
+Använd punktlista och följ strukturen:
+1) Bekräfta förbättringar
+2) Identifiera kvarstående brister
+3) Ge konkreta råd
+4) Redovisa tidsåtgång.`;
 
     let prompt;
-
     if (!second) {
-      //--- Första återkopplingen ---
+      // --- Första återkopplingen ---
       prompt = `
-${tone}
+${meta}
+
 Utgå ENDAST från följande källtext:
 
 ────────────────────────────────────
@@ -47,15 +55,16 @@ ${safeSource}
 ${first}
 
 **Din uppgift:**
-1. Bekräfta vad du gjorde bra och visa uppskattning för din insats.
-2. Identifiera vilka aspekter som saknas eller kan förbättras enligt källtexten.
-3. Ge konkreta, vänliga tips inför din nästa omformulering.
+1. Du har gjort bra när du…
+2. Du kan utveckla…
+3. Tips inför nästa omformulering:…
 
-Svara på svenska, i punktform, med en varm och personlig ton.`;
+Svara enligt instruktionerna ovan.`;
     } else {
-      //--- Andra återkopplingen ---
+      // --- Andra återkopplingen ---
       prompt = `
-${tone}
+${meta}
+
 Utgå ENDAST från följande källtext:
 
 ────────────────────────────────────
@@ -69,12 +78,12 @@ ${first}
 ${second}
 
 **Din uppgift:**
-1. Beskriv vilka förbättringar du gjort i ditt andra svar jämfört med det första – hänvisa till källtexten och ge erkännande för dina framsteg.
-2. Visa vilka delar som fortfarande kan utvecklas vidare enligt källtexten.
-3. Ge två konkreta, vänliga råd för hur du kan göra ditt svar ännu mer komplett.
-${timeInstruction}
+1. Du har förbättrat…
+2. Du kan fortfarande utveckla…
+3. Två konkreta, vänliga råd:…
+${timeBullet}
 
-Svara på svenska, i punktform, med en varm och uppmuntrande ton.`;
+Svara enligt instruktionerna ovan.`;
     }
 
     // Anropa OpenAI
@@ -87,7 +96,7 @@ Svara på svenska, i punktform, med en varm och uppmuntrande ton.`;
 
     const feedback = completion.choices[0].message.content;
 
-    // Spara logg vid andra svar
+    // Spara logg (endast för andra svar)
     if (second) {
       await supabase.from('conversation_logs').insert({
         slug,
