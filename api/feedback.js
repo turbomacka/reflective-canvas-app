@@ -1,3 +1,4 @@
+// api/feedback.js
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -7,7 +8,9 @@ const supabase = createClient(
 );
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send('Method not allowed');
+  if (req.method !== 'POST') {
+    return res.status(405).send('Method not allowed');
+  }
 
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string'
@@ -66,10 +69,10 @@ Svara på svenska, som punktlista.
 `;
     }
 
-    // Anropa OpenAI
+    // Anropa OpenAI med en aktuell modell
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-0613',
+      model: 'gpt-3.5-turbo',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
     });
@@ -89,6 +92,6 @@ Svara på svenska, som punktlista.
     return res.status(200).json({ feedback });
   } catch (err) {
     console.error('Error in /api/feedback:', err);
-    return res.status(500).send('LLM-error');
+    return res.status(500).json({ error: err.message });
   }
 };
