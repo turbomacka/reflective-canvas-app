@@ -12,86 +12,92 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method not allowed');
   }
 
+  // Hämta body
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
     const safeSource = source.slice(0, 9000);
 
-    // Build time bullet
+    // Tidsbullet för punkt 4
     let timeBullet = '';
     if (second && typeof delta_seconds === 'number') {
-      timeBullet = `4. You spent ${delta_seconds} seconds on your revision.`;
+      timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
       if (delta_seconds < 60) {
-        timeBullet += ` (Under 60 s – consider taking a few more minutes to reflect deeply on the material.)`;
+        timeBullet += ` (Under 60 s – ta gärna några extra minuter för att reflektera djupare över materialet och fördjupa ditt svar.)`;
       }
     }
 
-    // System prompt in English, language-neutral
+    // System‐prompt med helt explicit språkinstruktion
     const systemPrompt = `
-You are an empathetic feedback assistant. Always respond in the exact same language the user used in their first answer. Do not translate or default to any other language. Address the user directly using "you"/"your". Use a bullet list with this structure:
-1) Recognize improvements
-2) Identify remaining issues
-3) Provide two concrete, friendly suggestions
-4) Report time spent (see bullet 4).
-`;
+Du är en empatisk granskningsassistent.
+– Använd alltid exakt samma språk som användaren skrev i sitt första svar.
+  Om användaren skriver på svenska, svara på svenska.
+  Om användaren skriver på engelska, svara på engelska.
+– Tala varmt och uppmuntrande direkt till användaren med "du"/"din".
+– Använd punktlista och följ denna struktur:
+   1) Bekräfta förbättringar
+   2) Identifiera kvarstående brister
+   3) Ge två konkreta, vänliga råd
+   4) Redovisa tidsåtgång.
+`.trim();
 
-    // User prompt depends on whether it's first or second feedback
+    // Bygg user‐prompt
     let userPrompt;
     if (!second) {
       userPrompt = `
-Here is the source text you must refer to:
+Här är den källa du ska utgå ifrån (RAG-data):
 
 ────────────────────────────────────
 ${safeSource}
 ────────────────────────────────────
 
-User's first answer:
-\"\"\"${first}\"\"\"
+**Ditt första svar:**
+${first}
 
-Your task:
-1. Recognize what you did well.
-2. Identify what is missing or needs improvement according to the source.
-3. Give friendly, concrete tips for how to improve before the next revision.
+**Din uppgift:**
+1. Du har gjort bra när du…
+2. Du kan utveckla…
+3. Tips inför din nästa omformulering:…
 
-Please follow the system instructions above.`;
+Följ systeminstruktionerna ovan.`;
     } else {
       userPrompt = `
-Here is the source text you must refer to:
+Här är den källa du ska utgå ifrån (RAG-data):
 
 ────────────────────────────────────
 ${safeSource}
 ────────────────────────────────────
 
-User's first answer:
-\"\"\"${first}\"\"\"
+**Ditt första svar:**
+${first}
 
-User's revised answer:
-\"\"\"${second}\"\"\"
+**Ditt reviderade svar:**
+${second}
 
-Your task:
-1. Recognize what improvements have been made compared to the first answer.
-2. Identify what still needs development according to the source.
-3. Provide two concrete, friendly suggestions to make the revised answer fully correct.
+**Din uppgift:**
+1. Du har förbättrat…
+2. Du kan fortfarande utveckla…
+3. Två konkreta, vänliga råd:…
 ${timeBullet}
 
-Please follow the system instructions above.`;
+Följ systeminstruktionerna ovan.`;
     }
 
-    // Call OpenAI
+    // Anropa OpenAI
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
+    const { choices } = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: systemPrompt.trim() },
-        { role: 'user',   content: userPrompt.trim() }
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt }
       ],
       temperature: 0.7,
     });
 
-    const feedback = completion.choices[0].message.content;
+    const feedback = choices[0].message.content;
 
-    // Save log for second answer
+    // Spara logg för reviderat svar
     if (second) {
       await supabase.from('conversation_logs').insert({
         slug,
