@@ -153,10 +153,10 @@ export default function Admin() {
       <input className="w-full border p-2" placeholder="Valfri titel" value={title} onChange={e => setTitle(e.target.value)} />
       <textarea ref={htmlRef} className="w-full border p-2 h-32" placeholder="Inläsningsmaterial (HTML/text)" value={html} onChange={e => setHtml(e.target.value)} />
       <div className="flex space-x-2">
-        <input className="flex-1 border p-2" placeholder="Länktext" value={linkText} onChange={e => setLinkText(e.target.value)} />
-        <input className="flex-1 border p-2" placeholder="URL (https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} />
-        <button onClick={insertLink} className="px-4 py-2 bg-blue-600 text-white rounded">Infoga länk</button>
-      </div>
+            <button onClick={loadLogs} className="px-3 py-1 bg-gray-200 rounded">Visa loggar</button>
+            <button onClick={downloadLogs} className="px-3 py-1 bg-indigo-600 text-white rounded">Ladda ner loggar</button>
+            <button onClick={loadSummary} className="px-3 py-1 bg-purple-600 text-white rounded">Insikter och rekommendationer</button>
+          </div>
       <textarea className="w-full border p-2 h-40" placeholder="RAG-data – källtext som GPT använder" value={source} onChange={e => setSource(e.target.value)} />
       <textarea className="w-full border p-2 h-32" placeholder="Reflektionsfråga" value={question} onChange={e => setQuestion(e.target.value)} />
 
