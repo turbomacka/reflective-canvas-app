@@ -9,6 +9,13 @@ interface PageRow {
   source: string;
 }
 
+interface LogEntry {
+  first: string;
+  second: string;
+  feedback: string;
+  created_at: string;
+}
+
 export default function Admin() {
   const [pages, setPages]       = useState<PageRow[]>([]);
   const [slug, setSlug]         = useState('');
@@ -21,6 +28,7 @@ export default function Admin() {
   const [msg, setMsg]           = useState('');
   const [pageUrl, setPageUrl]   = useState('');
   const [iframeCode, setIframeCode] = useState('');
+  const [logs, setLogs]         = useState<LogEntry[]>([]);
 
   const htmlRef = useRef<HTMLTextAreaElement>(null);
 
@@ -33,7 +41,8 @@ export default function Admin() {
 
   // Ladda en sida för redigering
   const edit = async (s: string) => {
-    const { data } = await supa.from('pages').select('*').eq('slug', s).single();
+    const { data } = await supa.from('pages')
+      .select('*').eq('slug', s).single();
     if (!data) return;
     setSlug(data.slug);
     setTitle(data.title ?? '');
@@ -42,9 +51,31 @@ export default function Admin() {
     setSource(data.source);
     setPageUrl('');
     setIframeCode('');
+    setLogs([]);
   };
 
-  // Infoga <a> vid markören, omgiven av <p>
+  // Hämta loggar för slug
+  const loadLogs = async (s: string) => {
+    const { data } = await supa.from('conversation_logs')
+      .select('first,second,feedback,created_at')
+      .eq('slug', s)
+      .order('created_at', { ascending: false });
+    setLogs(data ?? []);
+  };
+
+  // Ladda ner loggar som JSON
+  const downloadLogs = () => {
+    const filename = `${slug}-logs.json`;
+    const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Infoga <a> i HTML
   const insertLink = () => {
     if (!htmlRef.current) return;
     const textarea = htmlRef.current;
@@ -62,13 +93,12 @@ export default function Admin() {
     setLinkText('');
   };
 
-  // Spara till Supabase och generera URLs
+  // Spara sida
   const handleSave = async () => {
     if (!slug.trim()) {
       setMsg('Slug krävs');
       return;
     }
-    // slå ihop html + länkar (länkar infogas redan i html via insertLink)
     const { error } = await supa.from('pages').upsert({
       slug,
       title: title || null,
@@ -80,13 +110,10 @@ export default function Admin() {
       setMsg(`Fel: ${error.message}`);
       return;
     }
-    // Success
     setMsg('Sidan sparad!');
-    // uppdatera lista
-    const { data } = await supa.from('pages').select('slug,title');
+    const { data } = await supa.from('pages')
+      .select('slug,title');
     setPages(data ?? []);
-
-    // generera public URL och iframe-kod
     const origin = window.location.origin;
     const u = `${origin}/page/${slug}`;
     setPageUrl(u);
@@ -96,27 +123,27 @@ export default function Admin() {
   const clear = () => {
     setSlug(''); setTitle(''); setQuestion('');
     setHtml(''); setLinkUrl(''); setLinkText('');
-    setSource(''); setMsg('');
-    setPageUrl(''); setIframeCode('');
+    setSource(''); setMsg(''); setPageUrl(''); setIframeCode(''); setLogs([]);
   };
 
   return (
     <main className="p-6 max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold">Admin – skapa / redigera sida</h1>
 
-      {/* Lista befintliga */}
-      <div className="border p-2 rounded bg-gray-50">
-        <h2 className="font-semibold mb-2">Befintliga sidor</h2>
+      <div className="border p-2 rounded bg-gray-50 flex flex-wrap gap-2">
         {pages.map(p => (
           <button key={p.slug}
                   onClick={() => edit(p.slug)}
-                  className="mr-2 mb-1 px-2 py-1 bg-blue-100 rounded">
+                  className="px-2 py-1 bg-blue-100 rounded">
             {p.slug}
           </button>
         ))}
+        <button onClick={() => loadLogs(slug)}
+                className="px-3 py-1 bg-gray-200 rounded">
+          Visa loggar
+        </button>
       </div>
 
-      {/* Formulär */}
       <input className="w-full border p-2" placeholder="slug (URL-del)"
              value={slug} onChange={e => setSlug(e.target.value)} />
       <input className="w-full border p-2" placeholder="Valfri titel"
@@ -124,13 +151,13 @@ export default function Admin() {
       <textarea ref={htmlRef}
                 className="w-full border p-2 h-32"
                 placeholder="Inläsningsmaterial (HTML/text)"
-                value={html} onChange={e => setHtml(e.target.value)} />
+                value={html}
+                onChange={e => setHtml(e.target.value)} />
 
-      {/* Länkinsättning */}
       <div className="flex space-x-2">
         <input className="flex-1 border p-2" placeholder="Länktext"
                value={linkText} onChange={e => setLinkText(e.target.value)} />
-        <input className="flex-1 border p-2" placeholder="URL (https://…)"
+        <input className="flex-1 border p-2" placeholder="URL (https://...)"
                value={linkUrl} onChange={e => setLinkUrl(e.target.value)} />
         <button onClick={insertLink}
                 className="px-4 py-2 bg-blue-600 text-white rounded">
@@ -140,11 +167,13 @@ export default function Admin() {
 
       <textarea className="w-full border p-2 h-40"
                 placeholder="RAG-data – källtext som GPT använder"
-                value={source} onChange={e => setSource(e.target.value)} />
+                value={source}
+                onChange={e => setSource(e.target.value)} />
 
       <textarea className="w-full border p-2 h-32"
                 placeholder="Reflektionsfråga"
-                value={question} onChange={e => setQuestion(e.target.value)} />
+                value={question}
+                onChange={e => setQuestion(e.target.value)} />
 
       <div className="space-x-4">
         <button onClick={handleSave}
@@ -159,7 +188,6 @@ export default function Admin() {
 
       {msg && <p className="text-sm text-green-700">{msg}</p>}
 
-      {/* Visa länk + iframe-kod om sparat */}
       {pageUrl && (
         <div className="mt-4 p-4 border rounded bg-gray-50 space-y-2">
           <p className="font-semibold">Publik länk:</p>
@@ -169,8 +197,36 @@ export default function Admin() {
           <p className="font-semibold">iframe-kod för Canvas:</p>
           <textarea readOnly className="w-full border p-2 h-20"
                     value={iframeCode} />
+
+          {logs.length > 0 && (
+            <div>
+              <button onClick={downloadLogs}
+                      className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded">
+                Ladda ner loggar
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      {logs.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-xl font-semibold">Loggar för {slug}</h2>
+          <div className="max-h-64 overflow-auto border p-2 rounded space-y-4">
+            {logs.map((l, i) => (
+              <div key={i} className="">
+                <p className="text-sm text-gray-500">
+                  {new Date(l.created_at).toLocaleString()}
+                </p>
+                <p><strong>Före:</strong> {l.first}</p>
+                <p><strong>Efter:</strong> {l.second}</p>
+                <p><strong>Feedback:</strong> {l.feedback}</p>
+                <hr className="my-2" />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
-);
+  );
 }
