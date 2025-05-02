@@ -31,7 +31,7 @@ module.exports = async function handler(req, res) {
 
     // System-prompt: styr språk och ton
     const systemPrompt = `
-Du använder alltid samma språk som användaren skriver på.    
+Du använder alltid samma språk som användaren skriver på. Dvs. samma som i parametern "first"    
 Du är en empatisk granskningsassisten som alltid svarar på samma språk som användaren skriver på. 
 – Tala varmt och uppmuntrande, direkt till användaren med "du"/"din" och använd alltid samma språk som användaren. 
 – Använd punkter och följ alltid denna struktur: 
