@@ -13,38 +13,37 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method not allowed');
   }
 
-  // Läs in parametrar
+  // Läs parametrar
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
     const safeSource = source.slice(0, 9000);
 
-    // Bygg tidsbullet
+    // Tidsbullet för punkt 4
     let timeBullet = '';
     if (second && typeof delta_seconds === 'number') {
       timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
       if (delta_seconds < 60) {
-        timeBullet += ` (Obs! Under 60 s – ta gärna några extra minuter för att reflektera och fördjupa ditt svar.)`;
+        timeBullet += ` (Under 60 s – ta gärna några extra minuter för att reflektera över materialet och fördjupa ditt svar.)`;
       }
     }
 
-    // Meta‐instruktioner
-    const meta = `
-Var varm och uppmuntrande. Tala direkt till användaren ("du"/"din") och visa att deras lärande uppmärksammas.
-Svara alltid på samma språk som användaren använde i sitt första svar.
-Använd punktlista och följ strukturen:
-1) Bekräfta förbättringar
-2) Identifiera kvarstående brister
-3) Ge konkreta råd
-4) Redovisa tidsåtgång.`;
+    // System-prompt: styr språk och ton
+    const systemPrompt = `
+Du är en empatisk granskningsassistent. 
+– Tala varmt och uppmuntrande, direkt till användaren med "du"/"din". 
+– Anpassa ditt svar så att det sker på exakt samma språk som användarens första svar (GPT kan själv detektera språket). 
+– Använd punkter och följ alltid denna struktur: 
+  1) Bekräfta förbättringar 
+  2) Identifiera kvarstående brister 
+  3) Ge konkreta råd 
+  4) Redovisa tidsåtgång.`;
 
-    let prompt;
+    // Bygg prompt beroende på fas
+    let userPrompt;
     if (!second) {
-      // --- Första återkopplingen ---
-      prompt = `
-${meta}
-
+      userPrompt = `
 Utgå ENDAST från följande källtext:
 
 ────────────────────────────────────
@@ -55,16 +54,13 @@ ${safeSource}
 ${first}
 
 **Din uppgift:**
-1. Du har gjort bra när du…
-2. Du kan utveckla…
-3. Tips inför nästa omformulering:…
+1. Du har gjort bra när du…  
+2. Du kan utveckla…  
+3. Tips inför din nästa omformulering:…  
 
-Svara enligt instruktionerna ovan.`;
+Svara enligt systeminstruktionerna ovan.`;
     } else {
-      // --- Andra återkopplingen ---
-      prompt = `
-${meta}
-
+      userPrompt = `
 Utgå ENDAST från följande källtext:
 
 ────────────────────────────────────
@@ -78,25 +74,28 @@ ${first}
 ${second}
 
 **Din uppgift:**
-1. Du har förbättrat…
-2. Du kan fortfarande utveckla…
-3. Två konkreta, vänliga råd:…
+1. Du har förbättrat…  
+2. Du kan fortfarande utveckla…  
+3. Två konkreta, vänliga råd:…  
 ${timeBullet}
 
-Svara enligt instruktionerna ovan.`;
+Svara enligt systeminstruktionerna ovan.`;
     }
 
-    // Anropa OpenAI
+    // Anropa GPT med system + user
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: systemPrompt.trim() },
+        { role: 'user', content: userPrompt.trim() }
+      ],
       temperature: 0.7,
     });
 
     const feedback = completion.choices[0].message.content;
 
-    // Spara logg (endast för andra svar)
+    // Spara endast final feedback i loggen
     if (second) {
       await supabase.from('conversation_logs').insert({
         slug,
