@@ -1,20 +1,34 @@
 // api/feedback.js
 const OpenAI = require('openai');
-const franc  = require('franc');
-const langs  = require('langs');
+let franc, langs;
+try {
+  franc = require('franc');
+  langs = require('langs');
+} catch (e) {
+  // Om packages inte finns, så ignorerar vi och fallbackar till engelska
+  franc = null;
+  langs = null;
+}
 const { createClient } = require('@supabase/supabase-js');
 
-// Initiera Supabase-klient
 const supabase = createClient(
   process.env.VITE_SUPA_URL.replace(/^https:\/\//, 'https://'),
   process.env.VITE_SUPA_KEY
 );
 
-// Heuristik: franc ger 3-bokstavskod, vi vill ha 2-bokstavskod
+// Robust språkdetektion med fallbacks
 function detectLangCode(text) {
-  const code3 = franc(text, { minLength: 3 });
-  const info  = langs.where('3', code3);
-  return info && info['1'] ? info['1'] : 'en';
+  if (franc && langs) {
+    try {
+      const code3 = franc(text, { minLength: 3 });
+      const info = langs.where('3', code3);
+      if (info && info['1']) return info['1'];
+    } catch (err) {
+      console.warn('Språkdetektion misslyckades, fallbackar till "en":', err);
+    }
+  }
+  // Enkelt fallback baserat på åäö
+  return /[åäöÅÄÖ]/.test(text) ? 'sv' : 'en';
 }
 
 module.exports = async function handler(req, res) {
@@ -22,18 +36,21 @@ module.exports = async function handler(req, res) {
     return res.status(405).send('Method not allowed');
   }
 
-  // Läs in parametrar
+  // Logga inkommande body för felsökning
+  console.log('📥 /api/feedback body:', req.body);
+
+  // Hämta parametrar
   let { slug = '', first = '', second, source = '', delta_seconds } =
     typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
   try {
-    // 1) Säker text
     const safeSource = source.slice(0, 9000);
 
-    // 2) Detektera språk baserat på first
-    const langCode = detectLangCode(first); // t.ex. 'sv' eller 'en'
+    // Detektera språk
+    const langCode = detectLangCode(first);
+    console.log('🈶 Detekterat språk:', langCode);
 
-    // 3) Bygg tids-bullet
+    // Skapa tidsbullet
     let timeBullet = '';
     if (second && typeof delta_seconds === 'number') {
       timeBullet = `4. Du lade ${delta_seconds} sekunder på din revidering.`;
@@ -42,22 +59,21 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // 4) System-prompt med explicit språkval
+    // Systemprompt som styr språk och ton
     const systemPrompt = `
-Du är en empatisk granskningsassistent. 
-– Tala varmt och uppmuntrande direkt till användaren med "du"/"din". 
-– Svara på språket som användaren använde i sitt första svar (ISO-kod: ${langCode}). 
-– Använd punktlista och följ alltid denna struktur:
+Du är en empatisk granskningsassistent.
+– Tala varmt och uppmuntrande till användaren med "du"/"din".
+– Svara på språket med ISO-kod "${langCode}".
+– Använd punktlista och följ denna struktur:
   1) Bekräfta förbättringar
   2) Identifiera kvarstående brister
   3) Ge konkreta råd
   4) Redovisa tidsåtgång.
 `.trim();
 
-    // 5) User-prompt beroende på fas
+    // User-prompt
     let userPrompt;
     if (!second) {
-      // Första återkopplingen
       userPrompt = `
 Utgå ENDAST från följande källtext:
 
@@ -69,13 +85,12 @@ ${safeSource}
 ${first}
 
 **Din uppgift:**
-1. Du har gjort bra när du…  
-2. Du kan utveckla…  
+1. Du har gjort bra när du…
+2. Du kan utveckla…
 3. Tips inför din nästa omformulering:…
 
 Svara enligt instruktionerna ovan.`;
     } else {
-      // Andra återkopplingen
       userPrompt = `
 Utgå ENDAST från följande källtext:
 
@@ -90,15 +105,15 @@ ${first}
 ${second}
 
 **Din uppgift:**
-1. Du har förbättrat…  
-2. Du kan fortfarande utveckla…  
-3. Två konkreta, vänliga råd:…  
+1. Du har förbättrat…
+2. Du kan fortfarande utveckla…
+3. Två konkreta, vänliga råd:…
 ${timeBullet}
 
 Svara enligt instruktionerna ovan.`;
     }
 
-    // 6) Anropa OpenAI
+    // Anropa OpenAI
     const openai = new OpenAI({ apiKey: process.env.VITE_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -110,7 +125,7 @@ Svara enligt instruktionerna ovan.`;
     });
     const feedback = completion.choices[0].message.content;
 
-    // 7) Spara logg vid reviderat svar
+    // Spara logg om det är reviderat svar
     if (second) {
       await supabase.from('conversation_logs').insert({
         slug,
@@ -121,11 +136,9 @@ Svara enligt instruktionerna ovan.`;
       });
     }
 
-    // 8) Returnera återkopplingen
     return res.status(200).json({ feedback });
-
   } catch (err) {
-    console.error('Error in /api/feedback:', err);
+    console.error('❌ Fel i /api/feedback:', err);
     return res.status(500).json({ error: err.message });
   }
 };
